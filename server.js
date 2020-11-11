@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import User from './models/User';
 import jwt from 'jsonwebtoken';
 import config from 'config';
+import auth from './middleware/auth';
 
 //start express app
 const app = express();
@@ -25,6 +26,62 @@ app.get('/', (req, res) =>
     res.send('http get request sent to root api endpoint')
 );
 
+/**
+ * @route GET api/auth
+ * @desc Authenticate user
+ */
+app.get('/api/auth', auth, async (req,res) => {
+    try{
+        const user = await User.findById(req.user.id);
+        res.status(200).json(user);
+    }catch(error){
+        res.status(500).send('Unknown server error');
+    }
+});
+
+/**
+ * @route POST api/login
+ * @desc Login user
+ */
+app.post(
+    '/api/login',
+    [
+        check('email', 'Please enter a valid email').isEmail(),
+        check('password', 'A password is required').exists()
+    ],
+    async (req, res) => {
+        const errors = validationResult(req);
+        if(!errors.isEmpty()){
+            return res.status(422).json({errors: errors.array()});
+        }else{
+            const {email, password} = req.body;
+            try{
+                let user = await User.findOne({email:email});
+                if(!user){
+                    return res
+                        .status(400)
+                        .json({errors: [{msg: 'Invalid email or password'}] });
+                }
+
+                const match = await bcrypt.compare(password, user.password);
+                if(!match){
+                    return res
+                        .status(400)
+                        .json({errors: [{msg: 'Invalid email or password'}] });
+                }
+
+                returnToken(user, res);
+            }catch(error){
+                res.status(500).send('Server error');
+            }
+        }
+    }
+)
+
+/**
+ * @route POST api/users
+ * @desc Register user
+ */
 app.post(
     '/api/users',
     [
@@ -57,21 +114,7 @@ app.post(
 
                 await user.save();
                 
-                const payload = {
-                    user: {
-                        id: user.id
-                    }
-                };
-
-                jwt.sign(
-                    payload,
-                    config.get('jwtSecret'),
-                    {expiresIn: '10hr'},
-                    (err, token) => {
-                        if(err) throw err;
-                        res.json({token: token});
-                    }
-                );
+                returnToken(user, res);
             }catch(error){
                 res.status(500).send('Server error');
             }
@@ -80,3 +123,21 @@ app.post(
 
 const port = 5000;
 app.listen(port, () => console.log(`Express server running on port ${port}`));
+
+const returnToken = (user, res) => {
+    const payload = {
+        user: {
+            id: user.id
+        }
+    };
+
+    jwt.sign(
+        payload,
+        config.get('jwtSecret'),
+        {expiresIn: '10hr'},
+        (err, token) => {
+            if(err) throw err;
+            res.json({token: token});
+        }
+    );
+}

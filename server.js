@@ -8,6 +8,7 @@ import jwt from 'jsonwebtoken';
 import config from 'config';
 import auth from './middleware/auth';
 import Post from './models/Post';
+import path from 'path';
 
 //start express app
 const app = express();
@@ -21,10 +22,6 @@ app.use(
     cors({
         origin: 'http://localhost:3000'
     })
-);
-
-app.get('/', (req, res) =>
-    res.send('http get request sent to root api endpoint')
 );
 
 /**
@@ -253,7 +250,18 @@ app.put('/api/posts/:id', auth, async (req,res) => {
     }
 });
 
-const port = 5000;
+//server build files in production
+if(process.env.NODE_ENV === "production"){
+    //set build folder
+    app.use(express.static('client/build'));
+
+    //route all requests to server index file
+    app.get('*', (req, res) => {
+        res.sendFile(path.resolve(__dirname, 'client', 'build', 'index.html'));
+    });
+}
+
+const port = process.env.PORT || 5000;
 app.listen(port, () => console.log(`Express server running on port ${port}`));
 
 const returnToken = (user, res) => {
